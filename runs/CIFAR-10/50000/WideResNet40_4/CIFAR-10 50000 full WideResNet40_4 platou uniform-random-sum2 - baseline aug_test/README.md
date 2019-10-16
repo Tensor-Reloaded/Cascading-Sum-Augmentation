@@ -1,0 +1,1 @@
+--dataset=CIFAR-10 --model=WideResNet(40, 10, 4) --test_batch_size=1024 --num_workers_test=8 -sa --sum_groups=2 -val --load_model=runs/CIFAR-10 50000 full WideResNet40_4 platou uniform-random-sum2 - baseline --save_dir=CIFAR-10 50000 full WideResNet40_4 platou uniform-random-sum2 - baseline aug_test --skip_existing --test_only --aug_test=125
