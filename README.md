@@ -122,7 +122,7 @@ Please use the following bibtex to reference our work:
 
 ## License
 
-This project is licensed under the Academic Free License (AFL) v. 3.0 - see the \[LICENSE.md\](LICENSE.md) file for details
+This project is licensed under the Academic Free License (AFL) v. 3.0 - see the [LICENSE](LICENSE) file for details
 
 ## Acknowledgments
 
