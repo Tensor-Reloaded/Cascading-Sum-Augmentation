@@ -1,5 +1,7 @@
-'''
-Licensed under the Academic Free License version 3.0
+'''Some helper functions for PyTorch, including:
+    - get_mean_and_std: calculate the mean and std value of dataset.
+    - msr_init: net parameter initialization.
+    - progress_bar: progress bar mimic xlua.progress.
 '''
 import random
 
@@ -8,7 +10,26 @@ import torch
 import torch.nn as nn
 import torch.nn.init as init
 
-import numpy as np
+CIFAR_10_CLASSES = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
+CIFAR_100_CLASSES = (
+    'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle',
+    'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel',
+    'can', 'castle', 'caterpillar', 'cattle', 'chair', 'chimpanzee', 'clock',
+    'cloud', 'cockroach', 'couch', 'crab', 'crocodile', 'cup', 'dinosaur',
+    'dolphin', 'elephant', 'flatfish', 'forest', 'fox', 'girl', 'hamster',
+    'house', 'kangaroo', 'keyboard', 'lamp', 'lawn_mower', 'leopard', 'lion',
+    'lizard', 'lobster', 'man', 'maple_tree', 'motorcycle', 'mountain', 'mouse',
+    'mushroom', 'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 'pear',
+    'pickup_truck', 'pine_tree', 'plain', 'plate', 'poppy', 'porcupine',
+    'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket', 'rose',
+    'sea', 'seal', 'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake',
+    'spider', 'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table',
+    'tank', 'telephone', 'television', 'tiger', 'tractor', 'train', 'trout',
+    'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman',
+    'worm'
+)
+
+
 
 class EarlyStopping(object):
     def __init__(self, mode='min', min_delta=0, patience=10, percentage=False):
@@ -53,15 +74,44 @@ class EarlyStopping(object):
         else:
             if mode == 'min':
                 self.is_better = lambda a, best: a < best - (
-                            best * min_delta / 100)
+                    best * min_delta / 100)
             if mode == 'max':
                 self.is_better = lambda a, best: a > best + (
-                            best * min_delta / 100)
+                    best * min_delta / 100)
+
+
+def get_mean_and_std(dataset):
+    '''Compute the mean and std value of dataset.'''
+    dataloader = torch.utils.data.DataLoader(
+        dataset, batch_size=1, shuffle=True, num_workers=2)
+    mean = torch.zeros(3)
+    std = torch.zeros(3)
+    print('==> Computing mean and std..')
+    for inputs, targets in dataloader:
+        for i in range(3):
+            mean[i] += inputs[:, i, :, :].mean()
+            std[i] += inputs[:, i, :, :].std()
+    mean.div_(len(dataset))
+    std.div_(len(dataset))
+    return mean, std
+
 
 def reset_seed(seed):
+    """
+    Sets seed of all random number generators used to the same seed, given as argument
+    WARNING: for full reproducibility of training, torch.backends.cudnn.deterministic = True is also needed!
+    """
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
+
+
+def compute_weights_l1_norm(model):
+    norm_sum = 0
+    for param in model.parameters():
+        norm_sum += torch.sum(torch.abs(param))
+    return norm_sum
+

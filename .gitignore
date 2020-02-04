@@ -2,12 +2,12 @@
 __pycache__/
 *.py[cod]
 *$py.class
-models/__pycache__/
+*.pth
+
+
+**/events.out.tfevents.*
 # C extensions
 *.so
-*.pth
-*.idea
-.vscode
 
 # Distribution / packaging
 .Python

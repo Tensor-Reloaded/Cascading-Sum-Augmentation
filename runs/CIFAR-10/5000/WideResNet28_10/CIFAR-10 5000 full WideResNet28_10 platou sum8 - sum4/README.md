@@ -1,3 +1,0 @@
---dataset=CIFAR-10 --lr=0.05 --momentum=0.9 --epoch=2000 --nesterov --wd=0.0001 --model=WideResNet(28, 10, 10) --use_reduce_lr --reduce_lr_patience=30 --reduce_lr_delta=0.001 --reduce_lr_min_lr=0.00005 --lr_gamma=0.5 --train_batch_size=400 --test_batch_size=512 -save --save_interval=50 --num_workers_train=4 --num_workers_test=8 --train_subset=5000 -sa --sum_groups=4 -val --load_model=runs/CIFAR-10 5000 full WideResNet28_10 platou sum8 --save_dir=CIFAR-10 5000 full WideResNet28_10 platou sum8 - sum4 --skip_existing --es_patience=130
-## Accuracy
- 62.950%

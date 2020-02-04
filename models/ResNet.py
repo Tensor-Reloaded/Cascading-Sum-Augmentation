@@ -1,5 +1,6 @@
-import math
 import torch.nn as nn
+import math
+
 
 def conv3x3(in_planes, out_planes, stride=1):
     # 3x3 convolution with padding
