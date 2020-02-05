@@ -482,6 +482,7 @@ class Solver(object):
 
                 self.writer.add_scalar("Model/Norm", self.get_model_norm(), epoch)
                 self.writer.add_scalar("Train Params/Learning rate", self.scheduler.get_last_lr()[0], epoch)
+                self.writer.add_scalar("Train Params/K-hot sum augmentation", self.n-self.t * (self.n - 1), epoch)
 
                 if best_accuracy < test_result[1]:
                     best_accuracy = test_result[1]
