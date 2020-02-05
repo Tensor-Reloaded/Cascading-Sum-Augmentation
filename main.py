@@ -449,9 +449,13 @@ class Solver(object):
                             self.remainder = 1 - (self.centroid * (self.n-self.k-1))
 
                             self.args.lr *= self.args.lr_gamma
+                            self.args.reduce_lr_min_lr *= self.args.lr_gamma
                             for param_group in self.optimizer.param_groups:
                                 param_group['lr'] *= self.args.lr_gamma
-                            self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer,T_max=self.args.epoch//(self.args.sum_groups-1),eta_min=self.args.reduce_lr_min_lr)
+                            for i,base_lr in enumerate(self.scheduler.base_lrs):
+                                self.scheduler.base_lrs[i] = base_lr* self.args.lr_gamma
+                            self.scheduler.T_max = self.args.epoch//(self.args.sum_groups-1)
+                            self.scheduler.eta_min  = self.args.reduce_lr_min_lr
                         prev_sum_groups = self.sum_groups
                         
                         if self.epoch >= self.args.epoch:

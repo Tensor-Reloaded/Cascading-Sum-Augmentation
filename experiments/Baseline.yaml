@@ -1,14 +1,14 @@
-model: "PreResNet(56)"
+model: "PreResNet(101)"
 dataset: "CIFAR-10"
 half: False
 mixpo: 1
 load_model: ""
-lr: 0.3
-wd: 0.00005
+lr: 0.1
+wd: 0.0001
 momentum: 0.9
 nesterov: True
-epoch: 350
-train_batch_size: 64
+epoch: 300
+train_batch_size: 128
 test_batch_size: 1024
 train_subset:
 initialization: 0
@@ -36,7 +36,7 @@ skip_existing: True
 adversarial: False
 
 sum_augmentation: False
-extra_epochs: 250
+extra_epochs: 0
 # gradual_cascade: True
 # skip_existing: True
 # sum_groups: None
