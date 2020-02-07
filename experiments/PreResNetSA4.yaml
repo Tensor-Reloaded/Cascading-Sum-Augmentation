@@ -3,11 +3,11 @@ dataset: "CIFAR-10"
 half: False
 mixpo: 1
 load_model: ""
-lr: 0.1
-wd: 0.0001
+lr: 0.25
+wd: 0.00005
 momentum: 0.9
 nesterov: True
-epoch: 300
+epoch: 450
 train_batch_size: 128
 test_batch_size: 1024
 train_subset:
@@ -15,8 +15,8 @@ initialization: 0
 initialization_batch_norm: False
 save_model: True
 save_interval: 50
-save_dir: "Baseline"
-scheduler: "MultiStepLR" # ReduceLROnPlateau | CosineAnnealingLR | MultiStepLR | OneCycleLR
+save_dir: "PreResNet101 K=4 full gradual cos OneCycleLR"
+scheduler: "OneCycleLR" # ReduceLROnPlateau | CosineAnnealingLR | MultiStepLR | OneCycleLR
 lr_milestones: [30, 60, 90, 120,150]
 reduce_lr_patience: 20
 reduce_lr_delta: 0.0
@@ -33,9 +33,10 @@ progress_bar: False
 test_only: False
 skip_existing: True
 adversarial: False
+validate: False
 
-sum_augmentation: False
-extra_epochs: 0
-# gradual_cascade: True
-# skip_existing: True
-# sum_groups: None
+sum_augmentation: True
+sum_groups: 4
+gradual_cascade: True
+extra_epochs: 150
+

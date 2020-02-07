@@ -137,11 +137,9 @@ class Solver(object):
                 root='../storage', train=True, download=True, transform=train_transform)
 
         if self.args.train_subset == None:
-            self.train_loader = torch.utils.data.DataLoader(
-                dataset=self.train_set, batch_size=self.args.train_batch_size, shuffle=True)
+            self.train_loader = torch.utils.data.DataLoader(dataset=self.train_set, batch_size=self.args.train_batch_size, shuffle=True)
         else:
-            filename = "subset_indices/subset_balanced_{}_{}.data".format(
-                self.dataset, self.args.train_subset)
+            filename = "subset_indices/subset_balanced_{}_{}.data".format(self.args.dataset, self.args.train_subset)
             if os.path.isfile(filename):
                 with open(filename, 'rb') as f:
                     subset_indices = pickle.load(f)
@@ -194,27 +192,27 @@ class Solver(object):
             self.model.load_state_dict(torch.load(self.args.load_model))
         self.model = self.model.to(self.device)
 
-        self.optimizer = optim.SGD(self.model.parameters(
-        ), lr=self.args.lr, momentum=self.args.momentum, weight_decay=self.args.wd, nesterov=self.args.nesterov)
-        if self.args.use_reduce_lr:
+        self.optimizer = optim.SGD(self.model.parameters(), lr=self.args.lr, momentum=self.args.momentum, weight_decay=self.args.wd, nesterov=self.args.nesterov)
+        if self.args.scheduler == "ReduceLROnPlateau":
             self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                 self.optimizer, mode='min', factor=self.args.lr_gamma, patience=self.args.reduce_lr_patience,
                 min_lr=self.args.reduce_lr_min_lr, verbose=True, threshold=self.args.reduce_lr_delta)
-        elif self.args.cos_annealing:
+        elif self.args.scheduler == "CosineAnnealingLR":
             if self.args.sum_augmentation:
                 self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer,T_max=self.args.epoch//(self.args.sum_groups-1),eta_min=self.args.reduce_lr_min_lr)
             else:
                 self.scheduler = optim.lr_scheduler.CosineAnnealingLR(self.optimizer,T_max=self.args.epoch,eta_min=self.args.reduce_lr_min_lr)
+        elif self.args.scheduler == "MultiStepLR":
+            self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.args.lr_milestones, gamma=self.args.lr_gamma)
+        elif self.args.scheduler == "OneCycleLR":
+            self.scheduler = optim.lr_scheduler.OneCycleLR(self.optimizer,max_lr=self.args.lr, total_steps=None, epochs=self.args.epoch//(self.args.sum_groups-1), steps_per_epoch=len(self.train_loader), pct_start=0.3, anneal_strategy='cos', cycle_momentum=True, base_momentum=0.85, max_momentum=0.95, div_factor=10.0, final_div_factor=500.0, last_epoch=-1)
         else:
-            self.scheduler = optim.lr_scheduler.MultiStepLR(
-                self.optimizer, milestones=self.args.lr_milestones, gamma=self.args.lr_gamma)
-
+            print("This scheduler is not implemented, go ahead an commit one")
         self.criterion = nn.CrossEntropyLoss().to(self.device)
 
         if self.cuda:
             if self.args.half:
-                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level=f"O{self.args.mixpo}",
-                                                            patch_torch_functions=True, keep_batchnorm_fp32=True)
+                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level=f"O{self.args.mixpo}",patch_torch_functions=True, keep_batchnorm_fp32=True)
 
     def get_train_batch_plot_idx(self):
         self.train_batch_plot_idx += 1
@@ -249,7 +247,7 @@ class Solver(object):
         self.model.train()
         total_loss = 0
         correct = 0
-        total = 0
+        total = 1
 
         for batch_num, (data, target) in enumerate(self.train_loader):
             data, target = data.to(self.device), target.to(self.device)
@@ -320,7 +318,8 @@ class Solver(object):
             if self.args.progress_bar:
                 progress_bar(batch_num, len(self.train_loader), 'Loss: %.4f | Acc: %.3f%% (%d/%d)'
                              % (total_loss / (batch_num + 1), 100.0 * correct/total, correct, total))
-
+            if self.args.scheduler == "OneCycleLR":
+                self.scheduler.step()
         return total_loss, correct / total
 
     def test(self):
@@ -445,20 +444,27 @@ class Solver(object):
                     if self.args.sum_augmentation:
                         self.sum_groups = self.n - self.k
                         if self.sum_groups != prev_sum_groups:
-                            self.centroid = 1/(self.n-self.k) - self.k/((self.n-self.k)*(self.n-self.k-1)) + (self.t*(self.n-1))/((self.n-self.k)*(self.n-self.k-1))
-                            self.remainder = 1 - (self.centroid * (self.n-self.k-1))
+                            if self.t < 1.0:
+                                self.centroid = 1/(self.n-self.k) - self.k/((self.n-self.k)*(self.n-self.k-1)) + (self.t*(self.n-1))/((self.n-self.k)*(self.n-self.k-1))
+                                self.remainder = 1 - (self.centroid * (self.n-self.k-1))
 
                             self.args.lr *= self.args.lr_gamma
                             self.args.reduce_lr_min_lr *= self.args.lr_gamma
                             for param_group in self.optimizer.param_groups:
                                 param_group['lr'] *= self.args.lr_gamma
-                            for i,base_lr in enumerate(self.scheduler.base_lrs):
-                                self.scheduler.base_lrs[i] = base_lr* self.args.lr_gamma
-                            self.scheduler.T_max = self.args.epoch//(self.args.sum_groups-1)
-                            self.scheduler.eta_min  = self.args.reduce_lr_min_lr
+                            if self.args.scheduler == "CosineAnnealingLR":
+                                for i,base_lr in enumerate(self.scheduler.base_lrs):
+                                    self.scheduler.base_lrs[i] = base_lr* self.args.lr_gamma
+                                self.scheduler.T_max = self.args.epoch//(self.args.sum_groups-1)
+                                self.scheduler.eta_min  = self.args.reduce_lr_min_lr
+                            elif self.args.scheduler == "OneCycleLR":
+                                self.scheduler = optim.lr_scheduler.OneCycleLR(self.optimizer,max_lr=self.args.lr, total_steps=None, epochs=self.args.epoch//(self.args.sum_groups-1),
+                                                                                    steps_per_epoch=len(self.train_loader), pct_start=0.3, anneal_strategy='cos', cycle_momentum=True,
+                                                                                    base_momentum=0.85, max_momentum=0.95, div_factor=10.0, final_div_factor=100.0, last_epoch=-1)
                         prev_sum_groups = self.sum_groups
                         
                         if self.epoch >= self.args.epoch:
+                            self.args.sum_augmentation = False
                             self.t_step = 0.0
                             self.sum_groups = 1
                         else:
@@ -492,8 +498,10 @@ class Solver(object):
                 if self.args.save_model and epoch % self.args.save_interval == 0:
                     self.save(epoch, 0)
 
-                if self.args.use_reduce_lr:
+                if self.args.scheduler == "MultiStepLR":
                     self.scheduler.step(train_result[0])
+                elif self.args.scheduler == "OneCycleLR":
+                    pass
                 else:
                     self.scheduler.step()
 
