@@ -10,17 +10,17 @@ Adversarial Attack Options: fgsm, bim, mim, pgd
 """
 num_classes=10
 
-model = PreResNet(56)
+model = PreResNet(101)
 if True:
     model = nn.DataParallel(model).cuda()
     
 #Loading Trained Model
-baseline= 'runs/Baseline/model_170_92.60000000000001.pth'
-robust_model= 'runs/Homomorphic Model Level Regularization k=2 withought/model_177_91.28.pth'
-homo_block_lvl_weak = 'runs/Homomorphic Block Level Regularization k=2/model_49_50.74999999999999.pth'
+baseline= 'runs/Baseline/model_286_94.97.pth'
+robust_model= 'runs/PreResNet101 K=6 full gradual cos/model_505_94.43.pth'
+# robust_model= 'runs/PreResNet101 K=6 full gradual cos/model_300_0.pth'
 
 
-state_dict = torch.load(robust_model)
+state_dict = torch.load(baseline)
 new_state_dict = OrderedDict()
 
 for key, value in state_dict.items():
@@ -35,12 +35,12 @@ model.to(device)
 # Loading Test Data (Un-normalized)
 transform_test = transforms.Compose([transforms.ToTensor(),])
 train_set = torchvision.datasets.CIFAR10(root='../storage', train=True, download=True, transform=transform_test)
-train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=256, shuffle=True)
+train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=512, shuffle=True)
 
 
 testset = torchvision.datasets.CIFAR10(root='../storage', train=False,
                                          download=True, transform=transform_test)
-test_loader = torch.utils.data.DataLoader(testset, batch_size=256, pin_memory=True,
+test_loader = torch.utils.data.DataLoader(testset, batch_size=512, pin_memory=True,
                                           shuffle=False, num_workers=4)
 
 # Mean and Standard Deiation of the Dataset
@@ -115,7 +115,7 @@ clean_clean_img, _ = next(iter(train_loader))
 clean_clean_img = normalize(clean_clean_img.clone().detach()).to(device)
 
 aug_test=None
-aug_test_lambda = 0.05
+aug_test_lambda = 0.5
 
 #Clean accuracy:91.710%   Adversarial accuracy:16.220%
 for idx, (img, label) in enumerate(test_loader):
@@ -129,7 +129,7 @@ for idx, (img, label) in enumerate(test_loader):
         output = torch.stack(outputs, dim=0).mean(0)
         clean_acc += torch.sum(output.argmax(dim=-1) == label).item()
         
-        adv= attack(model, criterion, img, label, eps=eps, attack_type= 'fgsm', iters= 10 )
+        adv= attack(model, criterion, img, label, eps=eps, attack_type= 'bim', iters= 10 )
         adv_img = normalize(adv.clone().detach())
         outputs = []
         for i in range(aug_test):
@@ -139,7 +139,23 @@ for idx, (img, label) in enumerate(test_loader):
         adv_acc += torch.sum(output.argmax(dim=-1) == label).item()
     else:
         clean_acc += torch.sum(model(normalize(img.clone().detach())).argmax(dim=-1) == label).item()
-        adv= attack(model, criterion, img, label, eps=eps, attack_type= 'fgsm', iters= 10 )
+        adv= attack(model, criterion, img, label, eps=eps, attack_type= 'bim', iters= 10 )
         adv_acc += torch.sum(model(normalize(adv.clone().detach())).argmax(dim=-1) == label).item()
     print('Batch: {0}'.format(idx))
 print('Clean accuracy:{0:.3%}\t Adversarial accuracy:{1:.3%}'.format(clean_acc / len(testset), adv_acc / len(testset)))
+
+# FGSM:
+# Baseline: Clean 94.52, Adv 24.08
+# K=6-1 aug=0 lambda=0.0: Clean 93.94, Adv 54.0
+
+# BIM
+# Baseline: Clean 94.52, Adv 24.08
+# K=6-1 aug=0 lambda=0.0: Clean 93.94, Adv 54.0
+
+# MIN:
+# Baseline: Clean 94.52, Adv 0.0
+# K=6-1 aug=0 lambda=0.0: Clean 93.94, Adv 9.19
+
+# PGD 
+# Baseline: Clean 94.52, Adv 0.0
+# K=6-1 aug=0 lambda=0.0: PGD Clean 93.94, Adv 3.22
