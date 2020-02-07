@@ -205,7 +205,7 @@ class Solver(object):
         elif self.args.scheduler == "MultiStepLR":
             self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=self.args.lr_milestones, gamma=self.args.lr_gamma)
         elif self.args.scheduler == "OneCycleLR":
-            self.scheduler = optim.lr_scheduler.OneCycleLR(self.optimizer,max_lr=self.args.lr, total_steps=None, epochs=self.args.epoch//(self.args.sum_groups-1), steps_per_epoch=len(self.train_loader), pct_start=0.3, anneal_strategy='cos', cycle_momentum=True, base_momentum=0.85, max_momentum=0.95, div_factor=10.0, final_div_factor=500.0, last_epoch=-1)
+            self.scheduler = optim.lr_scheduler.OneCycleLR(self.optimizer,max_lr=self.args.lr, total_steps=(self.args.epoch * len(self.train_loader))+1, epochs=self.args.epoch//(self.args.sum_groups-1), steps_per_epoch=len(self.train_loader), pct_start=0.3, anneal_strategy='cos', cycle_momentum=True, base_momentum=0.85, max_momentum=0.95, div_factor=10.0, final_div_factor=500.0, last_epoch=-1)
         else:
             print("This scheduler is not implemented, go ahead an commit one")
         self.criterion = nn.CrossEntropyLoss().to(self.device)
@@ -427,7 +427,6 @@ class Solver(object):
             }
 
         self.t_step = 1.0/(self.args.epoch * len(self.train_loader))
-        
 
         best_accuracy = 0
         if self.args.sum_augmentation:
@@ -458,7 +457,7 @@ class Solver(object):
                                 self.scheduler.T_max = self.args.epoch//(self.args.sum_groups-1)
                                 self.scheduler.eta_min  = self.args.reduce_lr_min_lr
                             elif self.args.scheduler == "OneCycleLR":
-                                self.scheduler = optim.lr_scheduler.OneCycleLR(self.optimizer,max_lr=self.args.lr, total_steps=None, epochs=self.args.epoch//(self.args.sum_groups-1),
+                                self.scheduler = optim.lr_scheduler.OneCycleLR(self.optimizer,max_lr=self.args.lr, total_steps=(self.args.epoch * len(self.train_loader))+1, epochs=self.args.epoch//(self.args.sum_groups-1),
                                                                                     steps_per_epoch=len(self.train_loader), pct_start=0.3, anneal_strategy='cos', cycle_momentum=True,
                                                                                     base_momentum=0.85, max_momentum=0.95, div_factor=10.0, final_div_factor=100.0, last_epoch=-1)
                         prev_sum_groups = self.sum_groups
@@ -467,8 +466,8 @@ class Solver(object):
                             self.args.sum_augmentation = False
                             self.t_step = 0.0
                             self.sum_groups = 1
-                        else:
-                            self.t_step = (1.0-self.t)/((self.args.epoch - self.epoch) * len(self.train_loader))
+                        # else:
+                        #     self.t_step = (1.0-self.t)/((self.args.epoch - self.epoch) * len(self.train_loader))
 
 
                     loss = train_result[0]
