@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn import Parameter
 import torchvision
 import torchvision.transforms as transforms
 from models import *
@@ -22,21 +23,32 @@ robust_model = 'runs/PreResNet101 K=6 full gradual cos/model_505_94.43.pth'
 mean = [0.4914, 0.4822, 0.4465]
 std = [0.2023, 0.1994, 0.2010]
 
+mean = torch.tensor(mean)
+std = torch.tensor(std)
 
-def normalize(t):
+
+def normalize_old(t):
     t[:, 0, :, :] = (t[:, 0, :, :] - mean[0]) / std[0]
     t[:, 1, :, :] = (t[:, 1, :, :] - mean[1]) / std[1]
     t[:, 2, :, :] = (t[:, 2, :, :] - mean[2]) / std[2]
 
     return t
 
+def normalize(t):
+    ret = (t - mean[None, ..., None, None]) / std[None, ..., None, None]
+    # assert (ret == normalize_old(t.clone())).all()
+    return ret
 
-def un_normalize(t):
+
+def un_normalize_old(t):
     t[:, 0, :, :] = (t[:, 0, :, :] * std[0]) + mean[0]
     t[:, 1, :, :] = (t[:, 1, :, :] * std[1]) + mean[1]
     t[:, 2, :, :] = (t[:, 2, :, :] * std[2]) + mean[2]
 
-    return t
+def un_normalize(t):
+    ret = (t * std[None, ..., None, None]) + mean[None, ..., None, None]
+    # assert (ret == un_normalize_old(t.clone())).all()
+    return ret
 
 
 aug_test = 1
@@ -45,8 +57,10 @@ aug_test_lambda = 0.5
 
 # Attacking Images batch-wise
 def attack(model, criterion, img, label, eps, attack_type, iters, clean_clean_img):
-    adv = img.detach()
-    adv.requires_grad = True
+    model.train()
+
+    adv = img.clone().detach()
+    adv = Parameter(adv, requires_grad=True)
 
     if attack_type == 'fgsm':
         iterations = 1
@@ -65,16 +79,20 @@ def attack(model, criterion, img, label, eps, attack_type, iters, clean_clean_im
         # loss = criterion(out_adv, label)
         # loss.backward()
 
-        adv = adv.clone()
         outputs = None
         for i in range(aug_test):  # TODO Check why the gradient doesnt propagate as it should
             aug_noise = clean_clean_img[torch.randperm(label.size(0))]
             adv = adv * (1 - aug_test_lambda) + aug_test_lambda * aug_noise
+            adv = Parameter(adv, requires_grad=True)
+            out = model(normalize(adv))
+            assert out.requires_grad
             if outputs is None:
-                outputs = model(normalize(adv))
+                outputs = out
             else:
-                outputs += model(normalize(adv))
+                outputs += out
         out_adv = outputs / adv.size(0)
+        assert out_adv.requires_grad
+
         loss = criterion(out_adv, label)
         loss.backward()
 
@@ -85,11 +103,14 @@ def attack(model, criterion, img, label, eps, attack_type, iters, clean_clean_im
             adv.grad = adv.grad / adv_mean
             noise = noise + adv.grad
         else:
+            assert adv.grad is not None
             noise = adv.grad
 
         # Optimization step
         adv.data = adv.data + step * noise.sign()
         #        adv.data = adv.data + step * adv.grad.sign()
+
+        print('OK!')
 
         if attack_type == 'pgd':
             adv.data = torch.where(adv.data > img.data + eps, img.data + eps, adv.data)
@@ -98,6 +119,7 @@ def attack(model, criterion, img, label, eps, attack_type, iters, clean_clean_im
 
         adv.grad.data.zero_()
 
+    model.eval()
     return adv.detach()
 
 
