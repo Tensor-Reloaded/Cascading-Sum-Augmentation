@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torchvision
+from torch.nn import Parameter
 import torchvision.transforms as transforms
 from models import *
 from collections import OrderedDict
@@ -12,7 +13,7 @@ num_classes=10
 
 model = PreResNet(101)
 if True:
-    model = nn.DataParallel(model).cuda()
+    model = model.cuda()
     
 #Loading Trained Model
 baseline= 'runs/Baseline/model_286_94.97.pth'
@@ -21,13 +22,14 @@ robust_model= 'runs/PreResNet101 K=6 full gradual cos/model_505_94.43.pth'
 
 
 state_dict = torch.load(baseline)
-new_state_dict = OrderedDict()
+# new_state_dict = OrderedDict()
 
-for key, value in state_dict.items():
-    new_key = "module."+key
-    new_state_dict[new_key] = value
+# for key, value in state_dict.items():
+#     new_key = "module."+key
+#     new_state_dict[new_key] = value
+# model.load_state_dict(new_state_dict)
 
-model.load_state_dict(new_state_dict)
+model.load_state_dict(state_dict)
 model.eval()
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 model.to(device)
@@ -35,12 +37,12 @@ model.to(device)
 # Loading Test Data (Un-normalized)
 transform_test = transforms.Compose([transforms.ToTensor(),])
 train_set = torchvision.datasets.CIFAR10(root='../storage', train=True, download=True, transform=transform_test)
-train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=512, shuffle=True)
+train_loader = torch.utils.data.DataLoader(dataset=train_set, batch_size=128, shuffle=True)
 
 
 testset = torchvision.datasets.CIFAR10(root='../storage', train=False,
                                          download=True, transform=transform_test)
-test_loader = torch.utils.data.DataLoader(testset, batch_size=512, pin_memory=True,
+test_loader = torch.utils.data.DataLoader(testset, batch_size=128, pin_memory=True,
                                           shuffle=False, num_workers=4)
 
 
@@ -62,9 +64,10 @@ def un_normalize(t):
 
 # Test time sum aug
 clean_clean_img, _ = next(iter(train_loader))  
-clean_clean_img = normalize(clean_clean_img.clone().detach()).to(device)
+clean_clean_img = clean_clean_img.detach().to(device)
+clean_clean_img_normalized = normalize(clean_clean_img.detach()).to(device)
 
-aug_test=1
+aug_test=2
 aug_test_lambda = 0.5
 
 # Attacking Images batch-wise
@@ -89,15 +92,16 @@ def attack(model, criterion, img, label, eps, attack_type, iters):
         # loss = criterion(out_adv, label)
         # loss.backward()
 
-        adv = adv.clone()
         outputs = None
         for i in range(aug_test): # TODO Check why the gradient doesnt propagate as it should
             aug_noise = clean_clean_img[torch.randperm(label.size(0))]
             adv = adv * (1 - aug_test_lambda) + aug_test_lambda * aug_noise
+            adv = Parameter(adv, requires_grad=True)
+            out = model(normalize(adv))
             if outputs is None:
-                outputs = model(normalize(adv))
+                outputs = out
             else:
-                outputs += model(normalize(adv))
+                outputs += out
         out_adv = outputs / adv.size(0)
         loss = criterion(out_adv, label)
         loss.backward()
@@ -113,7 +117,6 @@ def attack(model, criterion, img, label, eps, attack_type, iters):
 
         # Optimization step
         adv.data = adv.data + step * noise.sign()
-#        adv.data = adv.data + step * adv.grad.sign()
 
         if attack_type == 'pgd':
             adv.data = torch.where(adv.data > img.data + eps, img.data + eps, adv.data)
@@ -130,14 +133,13 @@ adv_acc = 0
 clean_acc = 0
 eps =8/255 # Epsilon for Adversarial Attack
 
-#Clean accuracy:91.710%   Adversarial accuracy:16.220%
 for idx, (img, label) in enumerate(test_loader):
     img, label = img.to(device), label.to(device)
     if aug_test != None:
         clean_img = normalize(img.clone().detach())
         outputs = torch.zeros_like(model(clean_img))
         for i in range(aug_test):
-            aug_data = clean_img * (1 - aug_test_lambda) + aug_test_lambda * clean_clean_img[torch.randperm(label.size(0))]
+            aug_data = clean_img * (1 - aug_test_lambda) + aug_test_lambda * clean_clean_img_normalized[torch.randperm(label.size(0))]
             outputs += model(aug_data).detach()
         output = outputs / clean_img.size(0)
         clean_acc += torch.sum(output.argmax(dim=-1) == label).item()
@@ -147,7 +149,7 @@ for idx, (img, label) in enumerate(test_loader):
 
         outputs = torch.zeros_like(model(adv_img))
         for i in range(aug_test):
-            aug_data = adv_img * (1 - aug_test_lambda) + aug_test_lambda * clean_clean_img[torch.randperm(label.size(0))]
+            aug_data = adv_img * (1 - aug_test_lambda) + aug_test_lambda * clean_clean_img_normalized[torch.randperm(label.size(0))]
             outputs += model(aug_data).detach()
         output = outputs / adv_img.size(0)
         adv_acc += torch.sum(output.argmax(dim=-1) == label).item()
