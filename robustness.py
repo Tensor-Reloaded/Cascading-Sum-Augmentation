@@ -43,6 +43,7 @@ testset = torchvision.datasets.CIFAR10(root='../storage', train=False,
 test_loader = torch.utils.data.DataLoader(testset, batch_size=512, pin_memory=True,
                                           shuffle=False, num_workers=4)
 
+
 # Mean and Standard Deiation of the Dataset
 mean = [0.4914, 0.4822, 0.4465]
 std = [0.2023, 0.1994, 0.2010]
@@ -58,6 +59,13 @@ def un_normalize(t):
     t[:, 2, :, :] = (t[:, 2, :, :] * std[2]) + mean[2]
 
     return t
+
+# Test time sum aug
+clean_clean_img, _ = next(iter(train_loader))  
+clean_clean_img = normalize(clean_clean_img.clone().detach()).to(device)
+
+aug_test=1
+aug_test_lambda = 0.5
 
 # Attacking Images batch-wise
 def attack(model, criterion, img, label, eps, attack_type, iters):
@@ -77,7 +85,20 @@ def attack(model, criterion, img, label, eps, attack_type, iters):
         noise = 0
         
     for j in range(iterations):
-        out_adv = model(normalize(adv.clone()))
+        # out_adv = model(normalize(adv.clone()))
+        # loss = criterion(out_adv, label)
+        # loss.backward()
+
+        adv = adv.clone()
+        outputs = None
+        for i in range(aug_test): # TODO Check why the gradient doesnt propagate as it should
+            aug_noise = clean_clean_img[torch.randperm(label.size(0))]
+            adv = adv * (1 - aug_test_lambda) + aug_test_lambda * aug_noise
+            if outputs is None:
+                outputs = model(normalize(adv))
+            else:
+                outputs += model(normalize(adv))
+        out_adv = outputs / adv.size(0)
         loss = criterion(out_adv, label)
         loss.backward()
 
@@ -109,33 +130,26 @@ adv_acc = 0
 clean_acc = 0
 eps =8/255 # Epsilon for Adversarial Attack
 
-
-
-clean_clean_img, _ = next(iter(train_loader))  
-clean_clean_img = normalize(clean_clean_img.clone().detach()).to(device)
-
-aug_test=None
-aug_test_lambda = 0.5
-
 #Clean accuracy:91.710%   Adversarial accuracy:16.220%
 for idx, (img, label) in enumerate(test_loader):
     img, label = img.to(device), label.to(device)
     if aug_test != None:
         clean_img = normalize(img.clone().detach())
-        outputs = []
+        outputs = torch.zeros_like(model(clean_img))
         for i in range(aug_test):
             aug_data = clean_img * (1 - aug_test_lambda) + aug_test_lambda * clean_clean_img[torch.randperm(label.size(0))]
-            outputs.append(model(aug_data).detach())
-        output = torch.stack(outputs, dim=0).mean(0)
+            outputs += model(aug_data).detach()
+        output = outputs / clean_img.size(0)
         clean_acc += torch.sum(output.argmax(dim=-1) == label).item()
         
         adv= attack(model, criterion, img, label, eps=eps, attack_type= 'bim', iters= 10 )
         adv_img = normalize(adv.clone().detach())
-        outputs = []
+
+        outputs = torch.zeros_like(model(adv_img))
         for i in range(aug_test):
             aug_data = adv_img * (1 - aug_test_lambda) + aug_test_lambda * clean_clean_img[torch.randperm(label.size(0))]
-            outputs.append(model(aug_data).detach())
-        output = torch.stack(outputs, dim=0).mean(0)
+            outputs += model(aug_data).detach()
+        output = outputs / adv_img.size(0)
         adv_acc += torch.sum(output.argmax(dim=-1) == label).item()
     else:
         clean_acc += torch.sum(model(normalize(img.clone().detach())).argmax(dim=-1) == label).item()
